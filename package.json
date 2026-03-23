@@ -1,0 +1,13 @@
+{
+  "name": "upi-screenshot-detector",
+  "version": "1.0.0",
+  "description": "Real-time UPI payment screenshot detector",
+  "main": "index.html",
+  "scripts": {
+    "start": "live-server",
+    "deploy": "gh-pages -d ."
+  },
+  "keywords": ["upi", "screenshot", "detector", "payment"],
+  "author": "Your Name",
+  "license": "MIT"
+}
