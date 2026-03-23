@@ -3,61 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UPI Screenshot Detector - Real Time</title>
+    <title>UPI Batch Screenshot Detector PRO</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1><i class="fas fa-camera"></i> UPI Screenshot Detector</h1>
-            <p>Real-time detection of UPI payment screenshots</p>
+            <h1><i class="fas fa-images"></i> UPI Batch Detector PRO</h1>
+            <p>Upload Multiple Screenshots - Get Instant Bulk Analysis</p>
+            <div class="tech-stack">
+                <span class="badge">Tesseract OCR</span>
+                <span class="badge">Batch Processing</span>
+                <span class="badge">Export CSV</span>
+            </div>
         </header>
 
-        <main>
-            <div class="upload-area" id="uploadArea">
-                <div class="upload-icon">
-                    <i class="fas fa-cloud-upload-alt"></i>
+        <!-- Single Upload (Previous) -->
+        <div class="upload-area single-upload" id="singleUpload">
+            <input type="file" id="singleFileInput" accept="image/*" hidden>
+            <div class="upload-icon"><i class="fas fa-image"></i></div>
+            <p>Single Screenshot</p>
+            <button class="btn-secondary" onclick="document.getElementById('singleFileInput').click()">
+                <i class="fas fa-folder-open"></i> Single File
+            </button>
+        </div>
+
+        <!-- BATCH Upload (NEW) -->
+        <div class="upload-area batch-upload" id="batchUpload">
+            <input type="file" id="batchFileInput" accept="image/*" multiple hidden>
+            <div class="upload-icon"><i class="fas fa-images"></i></div>
+            <p>Multiple Screenshots (1-100)</p>
+            <label class="btn-primary" for="batchFileInput">
+                <i class="fas fa-folder-open"></i> Select Batch Files
+            </label>
+            <small>Drag & drop also supported</small>
+        </div>
+
+        <!-- Progress -->
+        <div class="progress-section" id="batchProgress" style="display: none;">
+            <div class="progress-bar">
+                <div class="progress-fill" id="batchProgressFill"></div>
+            </div>
+            <div class="progress-text" id="batchProgressText">
+                <div class="file-queue" id="fileQueue"></div>
+            </div>
+        </div>
+
+        <!-- Single Result (Previous) -->
+        <div class="result-section single-result" id="singleResult" style="display: none;"></div>
+
+        <!-- BATCH Results (NEW) -->
+        <div class="batch-results" id="batchResults" style="display: none;">
+            <div class="summary-stats">
+                <div class="stat-card upi-count">
+                    <h2 id="totalUPI">0</h2>
+                    <p>UPI Screenshots</p>
                 </div>
-                <p>Drag & drop your screenshot here or click to browse</p>
-                <input type="file" id="fileInput" accept="image/*" hidden>
-                <button id="browseBtn" class="btn-primary">
-                    <i class="fas fa-folder-open"></i> Browse Files
+                <div class="stat-card total-count">
+                    <h2 id="totalFiles">0</h2>
+                    <p>Total Files</p>
+                </div>
+                <div class="stat-card accuracy">
+                    <h2 id="accuracyRate">--</h2>
+                    <p>Accuracy Rate</p>
+                </div>
+            </div>
+
+            <div class="results-grid" id="resultsGrid"></div>
+            
+            <div class="batch-actions">
+                <button class="btn-primary" onclick="exportCSV()">
+                    <i class="fas fa-download"></i> Export CSV Report
+                </button>
+                <button class="btn-secondary" onclick="clearBatch()">
+                    <i class="fas fa-trash"></i> Clear Results
                 </button>
             </div>
-
-            <div class="camera-section" id="cameraSection" style="display: none;">
-                <div class="camera-container">
-                    <video id="video" autoplay playsinline></video>
-                    <canvas id="canvas" style="display: none;"></canvas>
-                    <button id="captureBtn" class="btn-primary">
-                        <i class="fas fa-camera"></i> Capture Screenshot
-                    </button>
-                </div>
-            </div>
-
-            <div class="result-section" id="resultSection" style="display: none;">
-                <div class="image-preview">
-                    <img id="previewImg" alt="Detected Image">
-                </div>
-                <div class="detection-result" id="detectionResult">
-                    <div class="spinner" id="spinner"></div>
-                </div>
-            </div>
-        </main>
-
-        <div class="features">
-            <h3><i class="fas fa-star"></i> Features</h3>
-            <ul>
-                <li>✅ Real-time camera capture</li>
-                <li>✅ Drag & drop support</li>
-                <li>✅ Instant UPI detection</li>
-                <li>✅ 95%+ accuracy</li>
-                <li>✅ Mobile responsive</li>
-            </ul>
         </div>
     </div>
 
+    <script src="https://unpkg.com/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
