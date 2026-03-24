@@ -9,7 +9,7 @@ class BatchUPIOCRDetector {
 
     async init() {
         await this.initOCR();
-        await this.loadModel(); // ✅ STEP 4: Model called here
+        await this.loadModel(); // STEP 4
         this.setupSingleUpload();
         this.setupBatchUpload();
         this.setupDragDrop();
@@ -23,7 +23,7 @@ class BatchUPIOCRDetector {
         });
     }
 
-    // ✅ STEP 3: Load ML Model
+    // STEP 3: Load ML model
     async loadModel() {
         try {
             this.model = await tf.loadLayersModel('model/model.json');
@@ -44,7 +44,7 @@ class BatchUPIOCRDetector {
         }
     }
 
-    // ✅ Feature extraction
+    // ✅ STEP 5: Convert OCR → ML features
     extractFeatures(analysis) {
         return [
             analysis.upiScore / 100,
@@ -53,7 +53,7 @@ class BatchUPIOCRDetector {
         ];
     }
 
-    // ✅ ML Prediction
+    // ML prediction
     async predictFake(analysis) {
         const features = this.extractFeatures(analysis);
         const input = tf.tensor2d([features]);
@@ -130,7 +130,7 @@ class BatchUPIOCRDetector {
 
         const analysis = this.analyzeUPIOCR(data.text, data.confidence);
 
-        // 🔥 Combine OCR + ML
+        // 🔥 OCR → ML → Final
         const mlScore = await this.predictFake(analysis);
         const finalDecision = analysis.isUPI && mlScore > 0.5;
 
@@ -145,6 +145,7 @@ class BatchUPIOCRDetector {
         };
     }
 
+    // OCR logic
     analyzeUPIOCR(text, confidence) {
         const normalized = text.toUpperCase();
         let score = 0;
