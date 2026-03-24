@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UPI Batch Screenshot Detector PRO</title>
 
+    <!-- CSS -->
     <link rel="stylesheet" href="style.css">
+
+    <!-- Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 
@@ -20,6 +23,7 @@
 
         <div class="tech-stack">
             <span class="badge">Tesseract OCR</span>
+            <span class="badge">TensorFlow AI</span> <!-- NEW -->
             <span class="badge">Batch Processing</span>
             <span class="badge">Export CSV</span>
         </div>
@@ -72,8 +76,7 @@
     </div>
 
     <!-- SINGLE RESULT -->
-    <div class="result-section single-result" id="singleResult" style="display: none;">
-    </div>
+    <div class="result-section single-result" id="singleResult" style="display: none;"></div>
 
     <!-- BATCH RESULTS -->
     <div class="batch-results" id="batchResults" style="display: none;">
@@ -117,7 +120,14 @@
 </div>
 
 <!-- SCRIPTS -->
+
+<!-- OCR -->
 <script src="https://unpkg.com/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
+
+<!-- ✅ TensorFlow (NEW - IMPORTANT) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.5.0"></script>
+
+<!-- Main Script -->
 <script src="script.js"></script>
 
 </body>
