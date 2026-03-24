@@ -9,7 +9,7 @@ class BatchUPIOCRDetector {
 
     async init() {
         await this.initOCR();
-        await this.loadModel(); // ✅ STEP 3 HERE
+        await this.loadModel(); // ✅ STEP 4: Model called here
         this.setupSingleUpload();
         this.setupBatchUpload();
         this.setupDragDrop();
@@ -23,33 +23,18 @@ class BatchUPIOCRDetector {
         });
     }
 
-    // 🚀 STEP 3: LOAD REAL MODEL (or fallback)
+    // ✅ STEP 3: Load ML Model
     async loadModel() {
         try {
-            // ✅ Try loading trained model (if you have one)
             this.model = await tf.loadLayersModel('model/model.json');
             console.log("✅ Real ML Model Loaded");
         } catch (error) {
-            console.log("⚠️ No trained model found, using fallback model");
+            console.log("⚠️ Using fallback model");
 
-            // ✅ Fallback model (STEP 2)
             this.model = tf.sequential();
-
-            this.model.add(tf.layers.dense({
-                units: 16,
-                inputShape: [3],
-                activation: 'relu'
-            }));
-
-            this.model.add(tf.layers.dense({
-                units: 8,
-                activation: 'relu'
-            }));
-
-            this.model.add(tf.layers.dense({
-                units: 1,
-                activation: 'sigmoid'
-            }));
+            this.model.add(tf.layers.dense({ units: 16, inputShape: [3], activation: 'relu' }));
+            this.model.add(tf.layers.dense({ units: 8, activation: 'relu' }));
+            this.model.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
 
             this.model.compile({
                 optimizer: 'adam',
@@ -59,7 +44,7 @@ class BatchUPIOCRDetector {
         }
     }
 
-    // ✅ Feature extraction for ML
+    // ✅ Feature extraction
     extractFeatures(analysis) {
         return [
             analysis.upiScore / 100,
@@ -68,17 +53,12 @@ class BatchUPIOCRDetector {
         ];
     }
 
-    // ✅ ML prediction
+    // ✅ ML Prediction
     async predictFake(analysis) {
-        if (!this.model) return 0;
-
         const features = this.extractFeatures(analysis);
         const input = tf.tensor2d([features]);
-
         const prediction = this.model.predict(input);
-        const value = prediction.dataSync()[0];
-
-        return value;
+        return prediction.dataSync()[0];
     }
 
     setupSingleUpload() {
@@ -113,14 +93,9 @@ class BatchUPIOCRDetector {
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-
             this.files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
             this.processBatch();
         });
-    }
-
-    async processSingleFile(file) {
-        console.log('Single file:', file.name);
     }
 
     async processBatch() {
@@ -155,9 +130,8 @@ class BatchUPIOCRDetector {
 
         const analysis = this.analyzeUPIOCR(data.text, data.confidence);
 
-        // 🔥 ML prediction added
+        // 🔥 Combine OCR + ML
         const mlScore = await this.predictFake(analysis);
-
         const finalDecision = analysis.isUPI && mlScore > 0.5;
 
         return {
@@ -171,7 +145,6 @@ class BatchUPIOCRDetector {
         };
     }
 
-    // ✅ Your improved OCR logic (same as before)
     analyzeUPIOCR(text, confidence) {
         const normalized = text.toUpperCase();
         let score = 0;
@@ -199,11 +172,6 @@ class BatchUPIOCRDetector {
             score += 25;
             matched.push("UPI_ID");
         }
-
-        const structureKeywords = ['TRANSACTION ID', 'UPI REF', 'PAID TO'];
-        structureKeywords.forEach(k => {
-            if (normalized.includes(k)) score += 15;
-        });
 
         const amountMatch = /(\₹|RS\.?|INR)\s*\d+([.,]\d{1,2})?/.test(text);
         if (amountMatch) score += 15;
@@ -233,7 +201,6 @@ class BatchUPIOCRDetector {
 
     updateFileQueue(index, filename, status) {
         const queue = document.getElementById('fileQueue');
-
         queue.innerHTML += `
             <div class="file-item">
                 <span>${index + 1}. ${filename}</span>
