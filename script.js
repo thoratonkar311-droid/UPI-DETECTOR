@@ -16,7 +16,7 @@ class BatchUPIOCRDetector {
     async initOCR() {
         this.tesseractWorker = await Tesseract.createWorker('eng');
         await this.tesseractWorker.setParameters({
-            tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz₹Rs.PaidSuccessUPIIDGpayPhonePePaytmAmountTXN',
+            tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz₹Rs.PaidSuccessUPIIDGpayPhonePePaytmAmountTXN@.-',
         });
     }
 
@@ -37,17 +37,18 @@ class BatchUPIOCRDetector {
 
     setupDragDrop() {
         const dropZone = document.getElementById('batchUpload');
+
         ['dragover', 'dragenter'].forEach(evt => {
             dropZone.addEventListener(evt, e => {
                 e.preventDefault();
                 dropZone.classList.add('dragover');
             });
         });
-        
+
         dropZone.addEventListener('dragleave', () => {
             dropZone.classList.remove('dragover');
         });
-        
+
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
@@ -57,7 +58,6 @@ class BatchUPIOCRDetector {
     }
 
     async processSingleFile(file) {
-        // Single file logic (previous code)
         console.log('Single file:', file.name);
     }
 
@@ -66,23 +66,25 @@ class BatchUPIOCRDetector {
 
         this.showBatchProgress();
         this.results = [];
-
         document.getElementById('fileQueue').innerHTML = '';
 
         for (let i = 0; i < this.files.length; i++) {
             const file = this.files[i];
             this.updateFileQueue(i, file.name, '⏳ Scanning...');
-            
+
             try {
                 const result = await this.scanFile(file);
                 this.results.push(result);
                 this.updateFileQueue(i, file.name, '✅ Done');
             } catch (error) {
-                this.results.push({ filename: file.name, isUPI: false, error: error.message });
+                this.results.push({
+                    filename: file.name,
+                    isUPI: false,
+                    error: error.message
+                });
                 this.updateFileQueue(i, file.name, '❌ Error');
             }
 
-            // Update progress
             const progress = ((i + 1) / this.files.length) * 100;
             this.updateBatchProgress(progress);
         }
@@ -92,36 +94,76 @@ class BatchUPIOCRDetector {
 
     async scanFile(file) {
         const { data } = await this.tesseractWorker.recognize(file);
+
         const analysis = this.analyzeUPIOCR(data.text, data.confidence);
-        
+
         return {
             filename: file.name,
             isUPI: analysis.isUPI,
             confidence: analysis.confidence,
             upiScore: analysis.upiScore,
-            extractedText: data.text.substring(0, 100) + '...',
+            extractedText: data.text.substring(0, 120) + '...',
             thumb: URL.createObjectURL(file),
             keywords: analysis.keywords
         };
     }
 
+    // 🚀 IMPROVED DETECTION LOGIC
     analyzeUPIOCR(text, confidence) {
         const normalized = text.toUpperCase();
-        const keywords = ['UPI', 'GPA', 'PAID', 'SUCCESS', '₹', 'RS', 'PHONEPE', 'GPAY', 'TXN'];
         let score = 0;
         let matched = [];
 
+        const keywords = ['UPI', 'PAID', 'SUCCESS', '₹', 'PHONEPE', 'GPAY', 'PAYTM'];
+
         keywords.forEach(kw => {
             if (normalized.includes(kw)) {
-                score += 20;
+                score += 10;
                 matched.push(kw);
             }
         });
 
-        const amountMatch = /(\₹|RS\.?|INR)\s*\d+[.,]\d{2}/.test(text);
-        if (amountMatch) score += 25;
+        // ✅ Transaction ID validation
+        const txnPattern = /\b\d{12,16}\b/;
+        const hasTxn = txnPattern.test(text);
+        if (hasTxn) {
+            score += 30;
+            matched.push("VALID_TXN");
+        }
 
-        const isUPI = score > 50;
+        // ✅ UPI ID validation
+        const upiIdPattern = /\b[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}\b/;
+        const hasUPIID = upiIdPattern.test(text);
+        if (hasUPIID) {
+            score += 25;
+            matched.push("UPI_ID");
+        }
+
+        // ✅ Structure validation (real apps follow format)
+        const structureKeywords = ['TRANSACTION ID', 'UPI REF', 'PAID TO'];
+        structureKeywords.forEach(k => {
+            if (normalized.includes(k)) {
+                score += 15;
+                matched.push(k);
+            }
+        });
+
+        // ✅ Amount detection
+        const amountMatch = /(\₹|RS\.?|INR)\s*\d+([.,]\d{1,2})?/.test(text);
+        if (amountMatch) {
+            score += 15;
+            matched.push("AMOUNT");
+        }
+
+        // ❌ Fake penalty
+        if (!hasTxn && score > 40) {
+            score -= 30;
+            matched.push("SUSPICIOUS_NO_TXN");
+        }
+
+        // 🎯 Final decision
+        const isUPI = score > 70 && hasTxn && hasUPIID;
+
         return {
             isUPI,
             confidence: Math.min(100, confidence),
@@ -137,7 +179,7 @@ class BatchUPIOCRDetector {
 
     updateBatchProgress(percent) {
         document.getElementById('batchProgressFill').style.width = `${percent}%`;
-        document.getElementById('batchProgressText').innerHTML = 
+        document.getElementById('batchProgressText').innerHTML =
             `Processing ${this.files.length} files... ${percent.toFixed(0)}%`;
     }
 
@@ -165,29 +207,33 @@ class BatchUPIOCRDetector {
         document.getElementById('accuracyRate').textContent = `${accuracy}%`;
 
         const grid = document.getElementById('resultsGrid');
+
         grid.innerHTML = this.results.map(result => `
             <div class="batch-result-card ${result.isUPI ? 'upi' : ''}">
-                <img src="${result.thumb}" class="result-thumb" alt="${result.filename}">
+                <img src="${result.thumb}" class="result-thumb">
                 <h4>${result.filename}</h4>
+
                 <div class="result-status ${result.isUPI ? 'success' : 'failed'}">
-                    ${result.isUPI ? '✅ UPI DETECTED' : '❌ Not UPI'}
+                    ${result.isUPI ? '✅ UPI DETECTED' : '❌ FAKE / NOT UPI'}
                 </div>
+
                 <div class="scores">
                     <span>UPI Score: ${result.upiScore}%</span>
                     <span>OCR: ${result.confidence}%</span>
                 </div>
-                ${result.keywords.length > 0 ? 
-                    `<div class="keywords">Keywords: ${result.keywords.join(', ')}</div>` : 
-                    `<div class="no-keywords">No UPI keywords</div>`
-                }
+
+                <div class="keywords">
+                    ${result.keywords.join(', ') || 'No keywords'}
+                </div>
             </div>
         `).join('');
     }
 }
 
-// Global functions
+// 📥 Export CSV
 function exportCSV() {
     const detector = window.detector;
+
     const csv = [
         ['Filename', 'UPI Detected', 'UPI Score', 'OCR Confidence', 'Keywords'],
         ...detector.results.map(r => [
@@ -201,19 +247,21 @@ function exportCSV() {
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `upi-batch-report-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
 }
 
+// 🧹 Clear results
 function clearBatch() {
     document.getElementById('batchResults').style.display = 'none';
     document.getElementById('batchUpload').style.display = 'block';
     document.getElementById('batchFileInput').value = '';
 }
 
-// Initialize
+// 🚀 Initialize
 document.addEventListener('DOMContentLoaded', () => {
     window.detector = new BatchUPIOCRDetector();
 });
