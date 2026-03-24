@@ -1,125 +1,171 @@
-class UPIFakeDetector {
+class BatchUPIOCRDetector {
     constructor() {
-        this.model = null;
-        this.imageSize = 224;
-        this.isModelLoaded = false;
-
+        this.worker = null;
         this.init();
     }
 
     async init() {
-        this.updateStatus("⏳ Loading AI model...");
-        await this.loadModel();
+        console.log("🚀 Initializing OCR...");
+        await this.initOCR();
         this.setupUpload();
     }
 
-    // ✅ Load trained model
-    async loadModel() {
-        try {
-            this.model = await tf.loadLayersModel('model/model.json');
-            this.isModelLoaded = true;
-            this.updateStatus("✅ Model loaded. Upload image.");
-            console.log("Model Loaded");
-        } catch (err) {
-            console.error(err);
-            this.updateStatus("❌ Model not found (model/model.json)");
-        }
+    async initOCR() {
+        this.worker = await Tesseract.createWorker({
+            logger: m => console.log(m)
+        });
+
+        await this.worker.loadLanguage('eng');
+        await this.worker.initialize('eng');
+
+        console.log("✅ OCR Ready");
     }
 
-    // ✅ Upload handler
     setupUpload() {
-        const input = document.getElementById('fileInput');
-
-        input.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            this.previewImage(file);
-
-            if (!this.isModelLoaded) {
-                this.updateStatus("⚠️ Model not loaded");
-                return;
-            }
-
-            this.predictImage(file);
+        document.getElementById('batchFileInput').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            document.getElementById('results').innerHTML = "";
+            this.processBatch(files);
         });
     }
 
-    // ✅ Preview image
-    previewImage(file) {
-        const preview = document.getElementById('preview');
-        preview.src = URL.createObjectURL(file);
-    }
+    async processBatch(files) {
+        for (let i = 0; i < files.length; i++) {
+            document.getElementById('progress').innerText =
+                `⏳ Processing ${i + 1}/${files.length}`;
 
-    // ✅ Preprocess image → tensor
-    async preprocessImage(file) {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = this.imageSize;
-                canvas.height = this.imageSize;
-
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, this.imageSize, this.imageSize);
-
-                const tensor = tf.browser.fromPixels(canvas)
-                    .toFloat()
-                    .div(255.0)
-                    .expandDims(0);
-
-                resolve(tensor);
-            };
-        });
-    }
-
-    // ✅ Prediction
-    async predictImage(file) {
-        this.updateStatus("🔍 Analyzing image...");
-
-        const tensor = await this.preprocessImage(file);
-
-        const prediction = this.model.predict(tensor);
-        const score = prediction.dataSync()[0];
-
-        tensor.dispose();
-        prediction.dispose();
-
-        this.displayResult(score);
-    }
-
-    // ✅ Show result
-    displayResult(score) {
-        const result = document.getElementById('result');
-
-        const fakeConfidence = (score * 100).toFixed(2);
-        const realConfidence = (100 - fakeConfidence).toFixed(2);
-
-        if (score > 0.5) {
-            result.innerHTML = `
-                ❌ FAKE Screenshot <br>
-                Confidence: ${fakeConfidence}%
-            `;
-            result.style.color = "red";
-        } else {
-            result.innerHTML = `
-                ✅ REAL Screenshot <br>
-                Confidence: ${realConfidence}%
-            `;
-            result.style.color = "green";
+            const result = await this.scanFile(files[i]);
+            this.showResult(result);
         }
 
-        this.updateStatus("✅ Analysis complete");
+        document.getElementById('progress').innerText = "✅ Done";
     }
 
-    updateStatus(message) {
-        document.getElementById('status').innerText = message;
+    async scanFile(file) {
+        const { data } = await this.worker.recognize(file);
+        return this.analyze(data.text, file);
+    }
+
+    // 🔥 HYBRID ANALYSIS ENGINE
+    analyze(text, file) {
+        const t = text.toUpperCase();
+
+        // ---------------------------
+        // 1. OCR KEYWORD SCORE
+        // ---------------------------
+        let score = 0;
+
+        if (t.includes("UPI")) score += 20;
+        if (t.includes("SUCCESS")) score += 20;
+        if (t.includes("₹") || t.includes("RS")) score += 20;
+        if (t.includes("TXN")) score += 20;
+        if (t.includes("@")) score += 20;
+
+        const isUPI = score >= 60;
+
+        // ---------------------------
+        // 2. STRICT VALIDATION
+        // ---------------------------
+        const validUPIid = /[a-zA-Z0-9._-]{3,}@[a-zA-Z]{2,}/.test(text);
+        const validTxn = /[A-Z0-9]{10,}/.test(t);
+        const validAmount = /₹\s*\d+/.test(text);
+
+        // suspicious patterns
+        const suspiciousPattern = /(000000|111111|123456|999999)/;
+        const hasFakePattern = suspiciousPattern.test(text);
+
+        // ---------------------------
+        // 3. TAMPERING HEURISTICS (Pseudo-AI)
+        // ---------------------------
+        let tamperScore = 0;
+
+        // repeated characters → fake editing
+        if (/(.)\1{5,}/.test(text)) tamperScore += 30;
+
+        // inconsistent spacing (common in edits)
+        if (/\s{3,}/.test(text)) tamperScore += 10;
+
+        // weird symbols
+        if (/[^a-zA-Z0-9₹@.\s:-]/.test(text)) tamperScore += 10;
+
+        // very short text = suspicious
+        if (text.length < 30) tamperScore += 20;
+
+        // ---------------------------
+        // 4. APP DETECTION
+        // ---------------------------
+        let app = "Unknown";
+
+        if (t.includes("GOOGLE PAY") || t.includes("GPAY")) app = "GPay";
+        else if (t.includes("PHONEPE")) app = "PhonePe";
+        else if (t.includes("PAYTM")) app = "Paytm";
+
+        if (app === "Unknown") tamperScore += 10;
+
+        // ---------------------------
+        // 5. FINAL DECISION ENGINE
+        // ---------------------------
+        let fraudScore = 0;
+
+        if (!validUPIid) fraudScore += 25;
+        if (!validTxn) fraudScore += 25;
+        if (!validAmount) fraudScore += 20;
+        if (hasFakePattern) fraudScore += 30;
+
+        fraudScore += tamperScore;
+
+        const isReal = isUPI && fraudScore < 40;
+
+        // ---------------------------
+        return {
+            file,
+            isUPI,
+            isReal,
+            score,
+            fraudScore,
+            tamperScore,
+            app,
+            preview: text.substring(0, 120)
+        };
+    }
+
+    // 🎨 UI OUTPUT
+    showResult(r) {
+        const div = document.createElement("div");
+
+        div.style.border = "2px solid #ddd";
+        div.style.margin = "10px";
+        div.style.padding = "15px";
+        div.style.borderRadius = "10px";
+
+        div.innerHTML = `
+            <h3>${r.file.name}</h3>
+
+            <p><b>UPI:</b> ${r.isUPI ? "✅ YES" : "❌ NO"}</p>
+
+            <p><b>Status:</b> 
+                ${r.isReal ? 
+                    "🟢 REAL (LOW RISK)" : 
+                    "🔴 FAKE / SUSPICIOUS"}
+            </p>
+
+            <p><b>UPI Score:</b> ${r.score}</p>
+            <p><b>Fraud Score:</b> ${r.fraudScore}</p>
+            <p><b>Tamper Score:</b> ${r.tamperScore}</p>
+            <p><b>App:</b> ${r.app}</p>
+
+            <details>
+                <summary>📄 Extracted Text</summary>
+                <p>${r.preview}</p>
+            </details>
+
+            <hr>
+        `;
+
+        document.getElementById("results").appendChild(div);
     }
 }
 
-// ✅ Start app
-document.addEventListener('DOMContentLoaded', () => {
-    new UPIFakeDetector();
+document.addEventListener("DOMContentLoaded", () => {
+    new BatchUPIOCRDetector();
 });
