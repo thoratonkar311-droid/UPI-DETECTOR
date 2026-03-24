@@ -23,7 +23,6 @@ class BatchUPIOCRDetector {
         });
     }
 
-    // Load model
     async loadModel() {
         try {
             this.model = await tf.loadLayersModel('model/model.json');
@@ -44,7 +43,6 @@ class BatchUPIOCRDetector {
         }
     }
 
-    // STEP 5: Feature extraction
     extractFeatures(analysis) {
         return [
             analysis.upiScore / 100,
@@ -53,7 +51,6 @@ class BatchUPIOCRDetector {
         ];
     }
 
-    // STEP 6: ML Prediction
     async predictFake(analysis) {
         const features = this.extractFeatures(analysis);
         const input = tf.tensor2d([features]);
@@ -125,7 +122,6 @@ class BatchUPIOCRDetector {
         this.showBatchResults();
     }
 
-    // STEP 7: Combine OCR + ML
     async scanFile(file) {
         const { data } = await this.tesseractWorker.recognize(file);
 
@@ -146,7 +142,6 @@ class BatchUPIOCRDetector {
         };
     }
 
-    // OCR logic
     analyzeUPIOCR(text, confidence) {
         const normalized = text.toUpperCase();
         let score = 0;
@@ -211,6 +206,7 @@ class BatchUPIOCRDetector {
         `;
     }
 
+    // ✅ STEP 8: Show ML Score in UI
     showBatchResults() {
         document.getElementById('batchProgress').style.display = 'none';
         document.getElementById('batchResults').style.display = 'block';
@@ -227,8 +223,13 @@ class BatchUPIOCRDetector {
                 </div>
 
                 <div class="scores">
-                    <span>UPI: ${result.upiScore}%</span>
-                    <span>ML: ${result.mlScore}%</span>
+                    <span>UPI Score: ${result.upiScore}%</span>
+                    <span>ML Score: ${result.mlScore}%</span>
+                    <span>OCR: ${result.confidence}%</span>
+                </div>
+
+                <div class="keywords">
+                    ${result.keywords.join(', ') || 'No keywords'}
                 </div>
             </div>
         `).join('');
