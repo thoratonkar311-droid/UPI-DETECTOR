@@ -3,132 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UPI Batch Screenshot Detector PRO</title>
-
-    <!-- CSS -->
+    <title>UPI Batch Detector PRO</title>
     <link rel="stylesheet" href="style.css">
 
-    <!-- Icons -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- ✅ FIXED Tesseract CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 </head>
-
 <body>
+    <div class="container">
+        <header>
+            <h1>UPI Batch Detector PRO</h1>
+            <p>Upload Multiple Screenshots - Instant Analysis</p>
+        </header>
 
-<div class="container">
-
-    <!-- HEADER -->
-    <header>
-        <h1><i class="fas fa-images"></i> UPI Batch Detector PRO</h1>
-        <p>Upload Multiple Screenshots - Get Instant Bulk Analysis</p>
-
-        <div class="tech-stack">
-            <span class="badge">Tesseract OCR</span>
-            <span class="badge">TensorFlow AI</span> <!-- NEW -->
-            <span class="badge">Batch Processing</span>
-            <span class="badge">Export CSV</span>
-        </div>
-    </header>
-
-    <!-- SINGLE UPLOAD -->
-    <div class="upload-area single-upload" id="singleUpload">
-        <input type="file" id="singleFileInput" accept="image/*" hidden>
-
-        <div class="upload-icon">
-            <i class="fas fa-image"></i>
+        <!-- Upload -->
+        <div class="upload-area">
+            <input type="file" id="batchFileInput" multiple accept="image/*">
         </div>
 
-        <p>Single Screenshot</p>
+        <!-- Progress -->
+        <div id="progress"></div>
 
-        <button class="btn-secondary"
-            onclick="document.getElementById('singleFileInput').click()">
-            <i class="fas fa-folder-open"></i> Select Single File
-        </button>
+        <!-- Results -->
+        <div id="results"></div>
     </div>
 
-    <!-- BATCH UPLOAD -->
-    <div class="upload-area batch-upload" id="batchUpload">
-        <input type="file" id="batchFileInput" accept="image/*" multiple hidden>
-
-        <div class="upload-icon">
-            <i class="fas fa-images"></i>
-        </div>
-
-        <p>Multiple Screenshots (1–100)</p>
-
-        <label class="btn-primary" for="batchFileInput">
-            <i class="fas fa-folder-open"></i> Select Batch Files
-        </label>
-
-        <small>Drag & Drop also supported</small>
-    </div>
-
-    <!-- PROGRESS -->
-    <div class="progress-section" id="batchProgress" style="display: none;">
-        <div class="progress-bar">
-            <div class="progress-fill" id="batchProgressFill"></div>
-        </div>
-
-        <div class="progress-text" id="batchProgressText">
-            Processing files...
-        </div>
-
-        <div class="file-queue" id="fileQueue"></div>
-    </div>
-
-    <!-- SINGLE RESULT -->
-    <div class="result-section single-result" id="singleResult" style="display: none;"></div>
-
-    <!-- BATCH RESULTS -->
-    <div class="batch-results" id="batchResults" style="display: none;">
-
-        <!-- SUMMARY -->
-        <div class="summary-stats">
-
-            <div class="stat-card upi-count">
-                <h2 id="totalUPI">0</h2>
-                <p>UPI Screenshots</p>
-            </div>
-
-            <div class="stat-card total-count">
-                <h2 id="totalFiles">0</h2>
-                <p>Total Files</p>
-            </div>
-
-            <div class="stat-card accuracy">
-                <h2 id="accuracyRate">--</h2>
-                <p>Detection Rate</p>
-            </div>
-
-        </div>
-
-        <!-- GRID RESULTS -->
-        <div class="results-grid" id="resultsGrid"></div>
-
-        <!-- ACTION BUTTONS -->
-        <div class="batch-actions">
-            <button class="btn-primary" onclick="exportCSV()">
-                <i class="fas fa-download"></i> Export CSV Report
-            </button>
-
-            <button class="btn-secondary" onclick="clearBatch()">
-                <i class="fas fa-trash"></i> Clear Results
-            </button>
-        </div>
-
-    </div>
-
-</div>
-
-<!-- SCRIPTS -->
-
-<!-- OCR -->
-<script src="https://unpkg.com/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
-
-<!-- ✅ TensorFlow (NEW - IMPORTANT) -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.5.0"></script>
-
-<!-- Main Script -->
-<script src="script.js"></script>
-
+    <script src="script.js"></script>
 </body>
 </html>
