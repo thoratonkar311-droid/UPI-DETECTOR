@@ -1,6 +1,7 @@
 class BatchUPIOCRDetector {
     constructor() {
         this.tesseractWorker = null;
+        this.model = null; // ✅ NEW: TensorFlow model
         this.files = [];
         this.results = [];
         this.init();
@@ -8,38 +9,80 @@ class BatchUPIOCRDetector {
 
     async init() {
         await this.initOCR();
+        await this.loadModel(); // ✅ NEW
         this.setupSingleUpload();
         this.setupBatchUpload();
         this.setupDragDrop();
     }
 
+    // ✅ Initialize OCR
     async initOCR() {
         this.tesseractWorker = await Tesseract.createWorker('eng');
         await this.tesseractWorker.setParameters({
-            tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz₹Rs.PaidSuccessUPIIDGpayPhonePePaytmAmountTXN@.-',
+            tessedit_char_whitelist:
+                '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz₹Rs.PaidSuccessUPIIDGpayPhonePePaytmAmountTXN@.-',
         });
+    }
+
+    // ✅ STEP 2: Initialize TensorFlow Model
+    async loadModel() {
+        this.model = tf.sequential();
+
+        this.model.add(
+            tf.layers.dense({
+                units: 16,
+                inputShape: [3],
+                activation: 'relu',
+            })
+        );
+
+        this.model.add(
+            tf.layers.dense({
+                units: 8,
+                activation: 'relu',
+            })
+        );
+
+        this.model.add(
+            tf.layers.dense({
+                units: 1,
+                activation: 'sigmoid',
+            })
+        );
+
+        this.model.compile({
+            optimizer: 'adam',
+            loss: 'binaryCrossentropy',
+            metrics: ['accuracy'],
+        });
+
+        console.log("✅ TensorFlow Model Initialized");
     }
 
     setupSingleUpload() {
-        document.getElementById('singleFileInput').addEventListener('change', (e) => {
-            if (e.target.files[0]) {
-                this.processSingleFile(e.target.files[0]);
-            }
-        });
+        document
+            .getElementById('singleFileInput')
+            .addEventListener('change', (e) => {
+                if (e.target.files[0]) {
+                    this.processSingleFile(e.target.files[0]);
+                }
+            });
     }
 
     setupBatchUpload() {
-        document.getElementById('batchFileInput').addEventListener('change', (e) => {
-            this.files = Array.from(e.target.files);
-            this.processBatch();
-        });
+        document
+            .getElementById('batchFileInput')
+            .addEventListener('change', (e) => {
+                this.files = Array.from(e.target.files);
+                this.processBatch();
+            });
     }
 
     setupDragDrop() {
         const dropZone = document.getElementById('batchUpload');
 
-        ['dragover', 'dragenter'].forEach(evt => {
-            dropZone.addEventListener(evt, e => {
+        ['dragover', 'dragenter'].forEach((evt) => {
+            dropZone.addEventListener(evt, (e) => {
                 e.preventDefault();
                 dropZone.classList.add('dragover');
             });
@@ -52,7 +95,11 @@ class BatchUPIOCRDetector {
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            this.files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+
+            this.files = Array.from(e.dataTransfer.files).filter((f) =>
+                f.type.startsWith('image/')
+            );
+
             this.processBatch();
         });
     }
@@ -80,7 +127,7 @@ class BatchUPIOCRDetector {
                 this.results.push({
                     filename: file.name,
                     isUPI: false,
-                    error: error.message
+                    error: error.message,
                 });
                 this.updateFileQueue(i, file.name, '❌ Error');
             }
@@ -104,11 +151,11 @@ class BatchUPIOCRDetector {
             upiScore: analysis.upiScore,
             extractedText: data.text.substring(0, 120) + '...',
             thumb: URL.createObjectURL(file),
-            keywords: analysis.keywords
+            keywords: analysis.keywords,
         };
     }
 
-    // 🚀 IMPROVED DETECTION LOGIC
+    // ✅ Improved Detection Logic
     analyzeUPIOCR(text, confidence) {
         const normalized = text.toUpperCase();
         let score = 0;
@@ -116,59 +163,53 @@ class BatchUPIOCRDetector {
 
         const keywords = ['UPI', 'PAID', 'SUCCESS', '₹', 'PHONEPE', 'GPAY', 'PAYTM'];
 
-        keywords.forEach(kw => {
+        keywords.forEach((kw) => {
             if (normalized.includes(kw)) {
                 score += 10;
                 matched.push(kw);
             }
         });
 
-        // ✅ Transaction ID validation
         const txnPattern = /\b\d{12,16}\b/;
         const hasTxn = txnPattern.test(text);
         if (hasTxn) {
             score += 30;
-            matched.push("VALID_TXN");
+            matched.push('VALID_TXN');
         }
 
-        // ✅ UPI ID validation
         const upiIdPattern = /\b[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}\b/;
         const hasUPIID = upiIdPattern.test(text);
         if (hasUPIID) {
             score += 25;
-            matched.push("UPI_ID");
+            matched.push('UPI_ID');
         }
 
-        // ✅ Structure validation (real apps follow format)
         const structureKeywords = ['TRANSACTION ID', 'UPI REF', 'PAID TO'];
-        structureKeywords.forEach(k => {
+        structureKeywords.forEach((k) => {
             if (normalized.includes(k)) {
                 score += 15;
                 matched.push(k);
             }
         });
 
-        // ✅ Amount detection
         const amountMatch = /(\₹|RS\.?|INR)\s*\d+([.,]\d{1,2})?/.test(text);
         if (amountMatch) {
             score += 15;
-            matched.push("AMOUNT");
+            matched.push('AMOUNT');
         }
 
-        // ❌ Fake penalty
         if (!hasTxn && score > 40) {
             score -= 30;
-            matched.push("SUSPICIOUS_NO_TXN");
+            matched.push('SUSPICIOUS_NO_TXN');
         }
 
-        // 🎯 Final decision
         const isUPI = score > 70 && hasTxn && hasUPIID;
 
         return {
             isUPI,
             confidence: Math.min(100, confidence),
             upiScore: Math.min(100, score),
-            keywords: matched
+            keywords: matched,
         };
     }
 
@@ -185,12 +226,14 @@ class BatchUPIOCRDetector {
 
     updateFileQueue(index, filename, status) {
         const queue = document.getElementById('fileQueue');
+
         queue.innerHTML += `
             <div class="file-item">
                 <span>${index + 1}. ${filename}</span>
                 <span class="file-status">${status}</span>
             </div>
         `;
+
         queue.scrollTop = queue.scrollHeight;
     }
 
@@ -198,9 +241,10 @@ class BatchUPIOCRDetector {
         document.getElementById('batchProgress').style.display = 'none';
         document.getElementById('batchResults').style.display = 'block';
 
-        const upiCount = this.results.filter(r => r.isUPI).length;
+        const upiCount = this.results.filter((r) => r.isUPI).length;
         const total = this.results.length;
-        const accuracy = total > 0 ? ((upiCount / total) * 100).toFixed(1) : 0;
+        const accuracy =
+            total > 0 ? ((upiCount / total) * 100).toFixed(1) : 0;
 
         document.getElementById('totalUPI').textContent = upiCount;
         document.getElementById('totalFiles').textContent = total;
@@ -208,7 +252,9 @@ class BatchUPIOCRDetector {
 
         const grid = document.getElementById('resultsGrid');
 
-        grid.innerHTML = this.results.map(result => `
+        grid.innerHTML = this.results
+            .map(
+                (result) => `
             <div class="batch-result-card ${result.isUPI ? 'upi' : ''}">
                 <img src="${result.thumb}" class="result-thumb">
                 <h4>${result.filename}</h4>
@@ -226,42 +272,48 @@ class BatchUPIOCRDetector {
                     ${result.keywords.join(', ') || 'No keywords'}
                 </div>
             </div>
-        `).join('');
+        `
+            )
+            .join('');
     }
 }
 
-// 📥 Export CSV
+// CSV Export
 function exportCSV() {
     const detector = window.detector;
 
     const csv = [
         ['Filename', 'UPI Detected', 'UPI Score', 'OCR Confidence', 'Keywords'],
-        ...detector.results.map(r => [
+        ...detector.results.map((r) => [
             r.filename,
             r.isUPI ? 'YES' : 'NO',
             r.upiScore,
             r.confidence,
-            r.keywords.join(', ') || 'None'
-        ])
-    ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+            r.keywords.join(', ') || 'None',
+        ]),
+    ]
+        .map((row) => row.map((cell) => `"${cell}"`).join(','))
+        .join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `upi-batch-report-${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `upi-batch-report-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`;
     a.click();
 }
 
-// 🧹 Clear results
+// Clear Results
 function clearBatch() {
     document.getElementById('batchResults').style.display = 'none';
     document.getElementById('batchUpload').style.display = 'block';
     document.getElementById('batchFileInput').value = '';
 }
 
-// 🚀 Initialize
+// Init
 document.addEventListener('DOMContentLoaded', () => {
     window.detector = new BatchUPIOCRDetector();
 });
