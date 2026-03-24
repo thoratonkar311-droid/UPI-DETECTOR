@@ -1,171 +1,241 @@
 class BatchUPIOCRDetector {
     constructor() {
-        this.worker = null;
+        this.tesseractWorker = null;
+        this.model = null;
+        this.files = [];
+        this.results = [];
         this.init();
     }
 
     async init() {
-        console.log("🚀 Initializing OCR...");
         await this.initOCR();
-        this.setupUpload();
+        await this.loadModel();
+        this.setupSingleUpload();
+        this.setupBatchUpload();
+        this.setupDragDrop();
     }
 
     async initOCR() {
-        this.worker = await Tesseract.createWorker({
-            logger: m => console.log(m)
+        this.tesseractWorker = await Tesseract.createWorker('eng');
+        await this.tesseractWorker.setParameters({
+            tessedit_char_whitelist:
+                '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz₹Rs.PaidSuccessUPIIDGpayPhonePePaytmAmountTXN@.-',
         });
-
-        await this.worker.loadLanguage('eng');
-        await this.worker.initialize('eng');
-
-        console.log("✅ OCR Ready");
     }
 
-    setupUpload() {
+    async loadModel() {
+        try {
+            this.model = await tf.loadLayersModel('model/model.json');
+            console.log("✅ Real ML Model Loaded");
+        } catch (error) {
+            console.log("⚠️ Using fallback model");
+
+            this.model = tf.sequential();
+            this.model.add(tf.layers.dense({ units: 16, inputShape: [3], activation: 'relu' }));
+            this.model.add(tf.layers.dense({ units: 8, activation: 'relu' }));
+            this.model.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+
+            this.model.compile({
+                optimizer: 'adam',
+                loss: 'binaryCrossentropy',
+                metrics: ['accuracy']
+            });
+        }
+    }
+
+    extractFeatures(analysis) {
+        return [
+            analysis.upiScore / 100,
+            analysis.confidence / 100,
+            analysis.keywords.length / 10
+        ];
+    }
+
+    async predictFake(analysis) {
+        const features = this.extractFeatures(analysis);
+        const input = tf.tensor2d([features]);
+        const prediction = this.model.predict(input);
+        return prediction.dataSync()[0];
+    }
+
+    setupSingleUpload() {
+        document.getElementById('singleFileInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                this.processSingleFile(e.target.files[0]);
+            }
+        });
+    }
+
+    setupBatchUpload() {
         document.getElementById('batchFileInput').addEventListener('change', (e) => {
-            const files = Array.from(e.target.files);
-            document.getElementById('results').innerHTML = "";
-            this.processBatch(files);
+            this.files = Array.from(e.target.files);
+            this.processBatch();
         });
     }
 
-    async processBatch(files) {
-        for (let i = 0; i < files.length; i++) {
-            document.getElementById('progress').innerText =
-                `⏳ Processing ${i + 1}/${files.length}`;
+    setupDragDrop() {
+        const dropZone = document.getElementById('batchUpload');
 
-            const result = await this.scanFile(files[i]);
-            this.showResult(result);
+        ['dragover', 'dragenter'].forEach(evt => {
+            dropZone.addEventListener(evt, e => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            this.files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+            this.processBatch();
+        });
+    }
+
+    async processBatch() {
+        if (this.files.length === 0) return;
+
+        this.showBatchProgress();
+        this.results = [];
+        document.getElementById('fileQueue').innerHTML = '';
+
+        for (let i = 0; i < this.files.length; i++) {
+            const file = this.files[i];
+            this.updateFileQueue(i, file.name, '⏳ Scanning...');
+
+            try {
+                const result = await this.scanFile(file);
+                this.results.push(result);
+                this.updateFileQueue(i, file.name, '✅ Done');
+            } catch (error) {
+                this.results.push({ filename: file.name, isUPI: false });
+                this.updateFileQueue(i, file.name, '❌ Error');
+            }
+
+            const progress = ((i + 1) / this.files.length) * 100;
+            this.updateBatchProgress(progress);
         }
 
-        document.getElementById('progress').innerText = "✅ Done";
+        this.showBatchResults();
     }
 
     async scanFile(file) {
-        const { data } = await this.worker.recognize(file);
-        return this.analyze(data.text, file);
-    }
+        const { data } = await this.tesseractWorker.recognize(file);
 
-    // 🔥 HYBRID ANALYSIS ENGINE
-    analyze(text, file) {
-        const t = text.toUpperCase();
+        const analysis = this.analyzeUPIOCR(data.text, data.confidence);
 
-        // ---------------------------
-        // 1. OCR KEYWORD SCORE
-        // ---------------------------
-        let score = 0;
+        const mlScore = await this.predictFake(analysis);
 
-        if (t.includes("UPI")) score += 20;
-        if (t.includes("SUCCESS")) score += 20;
-        if (t.includes("₹") || t.includes("RS")) score += 20;
-        if (t.includes("TXN")) score += 20;
-        if (t.includes("@")) score += 20;
+        const finalDecision = analysis.isUPI && mlScore > 0.5;
 
-        const isUPI = score >= 60;
-
-        // ---------------------------
-        // 2. STRICT VALIDATION
-        // ---------------------------
-        const validUPIid = /[a-zA-Z0-9._-]{3,}@[a-zA-Z]{2,}/.test(text);
-        const validTxn = /[A-Z0-9]{10,}/.test(t);
-        const validAmount = /₹\s*\d+/.test(text);
-
-        // suspicious patterns
-        const suspiciousPattern = /(000000|111111|123456|999999)/;
-        const hasFakePattern = suspiciousPattern.test(text);
-
-        // ---------------------------
-        // 3. TAMPERING HEURISTICS (Pseudo-AI)
-        // ---------------------------
-        let tamperScore = 0;
-
-        // repeated characters → fake editing
-        if (/(.)\1{5,}/.test(text)) tamperScore += 30;
-
-        // inconsistent spacing (common in edits)
-        if (/\s{3,}/.test(text)) tamperScore += 10;
-
-        // weird symbols
-        if (/[^a-zA-Z0-9₹@.\s:-]/.test(text)) tamperScore += 10;
-
-        // very short text = suspicious
-        if (text.length < 30) tamperScore += 20;
-
-        // ---------------------------
-        // 4. APP DETECTION
-        // ---------------------------
-        let app = "Unknown";
-
-        if (t.includes("GOOGLE PAY") || t.includes("GPAY")) app = "GPay";
-        else if (t.includes("PHONEPE")) app = "PhonePe";
-        else if (t.includes("PAYTM")) app = "Paytm";
-
-        if (app === "Unknown") tamperScore += 10;
-
-        // ---------------------------
-        // 5. FINAL DECISION ENGINE
-        // ---------------------------
-        let fraudScore = 0;
-
-        if (!validUPIid) fraudScore += 25;
-        if (!validTxn) fraudScore += 25;
-        if (!validAmount) fraudScore += 20;
-        if (hasFakePattern) fraudScore += 30;
-
-        fraudScore += tamperScore;
-
-        const isReal = isUPI && fraudScore < 40;
-
-        // ---------------------------
         return {
-            file,
-            isUPI,
-            isReal,
-            score,
-            fraudScore,
-            tamperScore,
-            app,
-            preview: text.substring(0, 120)
+            filename: file.name,
+            isUPI: finalDecision,
+            confidence: analysis.confidence,
+            upiScore: analysis.upiScore,
+            mlScore: (mlScore * 100).toFixed(1),
+            thumb: URL.createObjectURL(file),
+            keywords: analysis.keywords
         };
     }
 
-    // 🎨 UI OUTPUT
-    showResult(r) {
-        const div = document.createElement("div");
+    analyzeUPIOCR(text, confidence) {
+        const normalized = text.toUpperCase();
+        let score = 0;
+        let matched = [];
 
-        div.style.border = "2px solid #ddd";
-        div.style.margin = "10px";
-        div.style.padding = "15px";
-        div.style.borderRadius = "10px";
+        const keywords = ['UPI', 'PAID', 'SUCCESS', '₹', 'PHONEPE', 'GPAY', 'PAYTM'];
 
-        div.innerHTML = `
-            <h3>${r.file.name}</h3>
+        keywords.forEach(kw => {
+            if (normalized.includes(kw)) {
+                score += 10;
+                matched.push(kw);
+            }
+        });
 
-            <p><b>UPI:</b> ${r.isUPI ? "✅ YES" : "❌ NO"}</p>
+        const txnPattern = /\b\d{12,16}\b/;
+        const hasTxn = txnPattern.test(text);
+        if (hasTxn) {
+            score += 30;
+            matched.push("VALID_TXN");
+        }
 
-            <p><b>Status:</b> 
-                ${r.isReal ? 
-                    "🟢 REAL (LOW RISK)" : 
-                    "🔴 FAKE / SUSPICIOUS"}
-            </p>
+        const upiIdPattern = /\b[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}\b/;
+        const hasUPIID = upiIdPattern.test(text);
+        if (hasUPIID) {
+            score += 25;
+            matched.push("UPI_ID");
+        }
 
-            <p><b>UPI Score:</b> ${r.score}</p>
-            <p><b>Fraud Score:</b> ${r.fraudScore}</p>
-            <p><b>Tamper Score:</b> ${r.tamperScore}</p>
-            <p><b>App:</b> ${r.app}</p>
+        const amountMatch = /(\₹|RS\.?|INR)\s*\d+([.,]\d{1,2})?/.test(text);
+        if (amountMatch) score += 15;
 
-            <details>
-                <summary>📄 Extracted Text</summary>
-                <p>${r.preview}</p>
-            </details>
+        if (!hasTxn && score > 40) score -= 30;
 
-            <hr>
+        const isUPI = score > 70 && hasTxn && hasUPIID;
+
+        return {
+            isUPI,
+            confidence: Math.min(100, confidence),
+            upiScore: Math.min(100, score),
+            keywords: matched
+        };
+    }
+
+    showBatchProgress() {
+        document.getElementById('batchUpload').style.display = 'none';
+        document.getElementById('batchProgress').style.display = 'block';
+    }
+
+    updateBatchProgress(percent) {
+        document.getElementById('batchProgressFill').style.width = `${percent}%`;
+        document.getElementById('batchProgressText').innerHTML =
+            `Processing ${this.files.length} files... ${percent.toFixed(0)}%`;
+    }
+
+    updateFileQueue(index, filename, status) {
+        const queue = document.getElementById('fileQueue');
+        queue.innerHTML += `
+            <div class="file-item">
+                <span>${index + 1}. ${filename}</span>
+                <span class="file-status">${status}</span>
+            </div>
         `;
+    }
 
-        document.getElementById("results").appendChild(div);
+    // ✅ STEP 8: Show ML Score in UI
+    showBatchResults() {
+        document.getElementById('batchProgress').style.display = 'none';
+        document.getElementById('batchResults').style.display = 'block';
+
+        const grid = document.getElementById('resultsGrid');
+
+        grid.innerHTML = this.results.map(result => `
+            <div class="batch-result-card ${result.isUPI ? 'upi' : ''}">
+                <img src="${result.thumb}" class="result-thumb">
+                <h4>${result.filename}</h4>
+
+                <div class="result-status ${result.isUPI ? 'success' : 'failed'}">
+                    ${result.isUPI ? '✅ REAL UPI' : '❌ FAKE'}
+                </div>
+
+                <div class="scores">
+                    <span>UPI Score: ${result.upiScore}%</span>
+                    <span>ML Score: ${result.mlScore}%</span>
+                    <span>OCR: ${result.confidence}%</span>
+                </div>
+
+                <div class="keywords">
+                    ${result.keywords.join(', ') || 'No keywords'}
+                </div>
+            </div>
+        `).join('');
     }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    new BatchUPIOCRDetector();
+document.addEventListener('DOMContentLoaded', () => {
+    window.detector = new BatchUPIOCRDetector();
 });
